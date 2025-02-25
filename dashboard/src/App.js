@@ -5,6 +5,7 @@ import 'chartjs-adapter-date-fns';  // Import the date adapter
 
 function App() {
   const [dataPoints, setDataPoints] = useState([]);
+  const n = 600; // n is number of elements in buffer
 
   // Function to fetch data from the API every second
   const fetchData = async () => {
@@ -12,7 +13,11 @@ function App() {
       const response = await fetch('http://localhost:8000/data');
       const data = await response.json();
       if (data && data.length > 0) {
-        setDataPoints(prevData => [...prevData, data[0]]);
+        setDataPoints(prevData => {
+          const newData = [...prevData, data[0]];
+          // Keep only the last n data points
+          return newData.length > n ? newData.slice(newData.length - n) : newData;
+        });
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -104,21 +109,13 @@ function App() {
     }]
   };
 
-  // Chart options with a time scale for the x-axis (ticks update only per minute)
+  // Chart options without the internal title (general dashboard title is shown separately)
   const chartOptions = {
     responsive: true,
     plugins: {
       legend: {
         labels: {
           color: 'white'
-        }
-      },
-      title: {
-        display: true,
-        text: 'Flotation Process',
-        color: 'white',
-        font: {
-          size: 18
         }
       }
     },
@@ -162,7 +159,7 @@ function App() {
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#121212', minHeight: '100vh', color: 'white' }}>
-      {/* Page title */}
+      {/* General dashboard title */}
       <h1 style={{ textAlign: 'center', marginBottom: '20px' }}>Flotation Process</h1>
 
       {/* Row 1: Plant GIF and Recovery Rate Chart */}
