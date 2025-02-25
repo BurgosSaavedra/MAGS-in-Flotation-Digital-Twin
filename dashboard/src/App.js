@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Line } from 'react-chartjs-2';
 import Chart from 'chart.js/auto';
+import 'chartjs-adapter-date-fns';  // Import the date adapter
 
 function App() {
   const [dataPoints, setDataPoints] = useState([]);
@@ -23,25 +24,40 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Convert timestamps to a more readable format
-  const timeLabels = dataPoints.map(point => new Date(point.Timestamp).toLocaleTimeString());
+  // Convert raw data points to { x, y } format using Date objects
+  const recoveryData = dataPoints.map(point => ({
+    x: new Date(point.Timestamp),
+    y: point["Recovery Rate (%)"]
+  }));
 
-  // Data for the Recovery Rate chart
-  const recoveryValues = dataPoints.map(point => point["Recovery Rate (%)"]);
-  // Scatter points for anomalies (when Anomaly === 1)
   const anomalyData = dataPoints
     .filter(point => point.Anomaly === 1)
     .map(point => ({
-      x: new Date(point.Timestamp).toLocaleTimeString(),
+      x: new Date(point.Timestamp),
       y: point["Recovery Rate (%)"]
     }));
 
+  const feedRateData = dataPoints.map(point => ({
+    x: new Date(point.Timestamp),
+    y: point["Feed Rate (tph)"]
+  }));
+
+  const airFlowData = dataPoints.map(point => ({
+    x: new Date(point.Timestamp),
+    y: point["Air Flow (m3/min)"]
+  }));
+
+  const pHLevelData = dataPoints.map(point => ({
+    x: new Date(point.Timestamp),
+    y: point["pH Level"]
+  }));
+
+  // Chart data configurations (no "labels" property needed when using time scales)
   const recoveryChartData = {
-    labels: timeLabels,
     datasets: [
       {
         label: 'Recovery Rate (%)',
-        data: recoveryValues,
+        data: recoveryData,
         borderColor: 'rgba(75,192,192,1)',
         fill: false,
         tension: 0.1,
@@ -58,43 +74,37 @@ function App() {
     ]
   };
 
-  // Data for Feed Rate chart
-  const feedRateData = {
-    labels: timeLabels,
+  const feedRateChartData = {
     datasets: [{
       label: 'Feed Rate (tph)',
-      data: dataPoints.map(point => point["Feed Rate (tph)"]),
+      data: feedRateData,
       borderColor: 'rgba(255,99,132,1)',
       fill: false,
       tension: 0.1,
     }]
   };
 
-  // Data for Air Flow chart
-  const airFlowData = {
-    labels: timeLabels,
+  const airFlowChartData = {
     datasets: [{
       label: 'Air Flow (m³/min)',
-      data: dataPoints.map(point => point["Air Flow (m3/min)"]),
+      data: airFlowData,
       borderColor: 'rgba(54,162,235,1)',
       fill: false,
       tension: 0.1,
     }]
   };
 
-  // Data for pH Level chart
-  const pHLevelData = {
-    labels: timeLabels,
+  const pHLevelChartData = {
     datasets: [{
       label: 'pH Level',
-      data: dataPoints.map(point => point["pH Level"]),
+      data: pHLevelData,
       borderColor: 'rgba(255,206,86,1)',
       fill: false,
       tension: 0.1,
     }]
   };
 
-  // Dark mode chart options
+  // Chart options with a time scale for the x-axis (ticks update only per minute)
   const chartOptions = {
     responsive: true,
     plugins: {
@@ -102,10 +112,26 @@ function App() {
         labels: {
           color: 'white'
         }
+      },
+      title: {
+        display: true,
+        text: 'Flotation Process',
+        color: 'white',
+        font: {
+          size: 18
+        }
       }
     },
     scales: {
       x: {
+        type: 'time',
+        time: {
+          unit: 'minute',
+          displayFormats: {
+            minute: 'HH:mm'
+          },
+          tooltipFormat: 'HH:mm:ss'
+        },
         title: {
           display: true,
           text: 'Time',
@@ -136,6 +162,9 @@ function App() {
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#121212', minHeight: '100vh', color: 'white' }}>
+      {/* Page title */}
+      <h1 style={{ textAlign: 'center', marginBottom: '20px' }}>Flotation Process</h1>
+
       {/* Row 1: Plant GIF and Recovery Rate Chart */}
       <div style={{ display: 'flex', marginBottom: '20px' }}>
         <div style={{ flex: '1', marginRight: '10px' }}>
@@ -146,20 +175,20 @@ function App() {
           />
         </div>
         <div style={{ flex: '2' }}>
-          <Line data={recoveryChartData} options={chartOptions} />
+          <Line key="recovery" data={recoveryChartData} options={chartOptions} />
         </div>
       </div>
 
       {/* Row 2: Separate charts for Feed Rate, Air Flow, and pH Level */}
       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
         <div style={{ flex: '1', marginRight: '10px' }}>
-          <Line data={feedRateData} options={chartOptions} />
+          <Line key="feedRate" data={feedRateChartData} options={chartOptions} />
         </div>
         <div style={{ flex: '1', marginRight: '10px' }}>
-          <Line data={airFlowData} options={chartOptions} />
+          <Line key="airFlow" data={airFlowChartData} options={chartOptions} />
         </div>
         <div style={{ flex: '1' }}>
-          <Line data={pHLevelData} options={chartOptions} />
+          <Line key="pHLevel" data={pHLevelChartData} options={chartOptions} />
         </div>
       </div>
     </div>
