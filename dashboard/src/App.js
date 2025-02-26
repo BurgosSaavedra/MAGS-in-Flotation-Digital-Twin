@@ -13,6 +13,7 @@ import {
 import 'chartjs-adapter-date-fns';
 import axios from 'axios';
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import ReactMarkdown from 'react-markdown';
 
 Chart.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Legend, CategoryScale);
 
@@ -115,9 +116,19 @@ function App() {
     try {
       // Prepare prompt from REF to get the latest dataPoints
       const prompt = 
-      `Evaluate the flotation recovery performance using 
-      the provided data: ${JSON.stringify(dataPointsRef.current)}. 
-      Present the results in plain text and provide recommendations for further investigations.`;
+      `Evaluate the flotation recovery performance using the provided data: 
+        ${JSON.stringify(dataPointsRef.current)}. 
+
+        Present the results in **Markdown format** using:
+        - Bullet points
+        - **Bold text** for key terms
+        - A structured analysis format with clear sections.
+
+        ### Structure:
+        1. **Summary Statistics**
+        2. **Potential Factors Influencing Recovery Rate Fluctuations**
+        3. **Recommendations for Further Investigations**
+        `;
 
       // Call the Gemini model
       const result = await model.generateContent(prompt);
@@ -288,7 +299,7 @@ function App() {
 
       <div style={{ padding: '20px', backgroundColor: '#1e1e1e', borderRadius: '10px' }}>
         <h2>Agent AI Advisor</h2>
-        <p>{geminiResponse || 'Waiting for assessment...'}</p>
+        <ReactMarkdown>{geminiResponse || 'Waiting for assessment...'}</ReactMarkdown>
         <p style={{ fontSize: '12px', color: 'gray' }}>
           Last updated: {lastUpdatedTime || 'N/A'}
         </p>
