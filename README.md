@@ -79,7 +79,7 @@ The AI-generated reports are displayed in markdown format within the dashboard.
 ## Video Demonstration
 Watch the following video to see the web application in action:
 
-[![Watch the video](https://img.youtube.com/vi/YOUR_VIDEO_ID/0.jpg)](https://www.youtube.com/watch?v=fDig66ccFe4)
+[![Watch the video](https://img.youtube.com/vi/fDig66ccFe4/0.jpg)](https://www.youtube.com/watch?v=fDig66ccFe4)
 
 ## Conclusion
 This project establishes a **Multy Agent Generative System** as a **Digital Twin for Flotation Process**, integrating **real-time data analysis, AI-driven advisory, and interactive visualization**. The **AI Agent Advisor** acts as an expert system, providing comprehensive insights and recommendations based on system behavior. Through continuous monitoring, statistical analysis, and anomaly detection, this system enhances operational efficiency and decision-making in flotation processing. Future developments may focus on refining AI models, improving anomaly detection, and integrating real-world industrial data sources for higher accuracy and scalability.
