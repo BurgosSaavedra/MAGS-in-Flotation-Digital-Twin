@@ -21,7 +21,7 @@ class FlotationProcessSimulator:
             feed_rate = np.random.normal(100, 5)
             air_flow = np.random.normal(50, 2)
             pH = np.random.normal(7.5, 0.2)
-            recovery_rate = 85 + 0.5 * feed_rate + 0.2 * air_flow - 3 * (pH - 7.5)
+            recovery_rate = 25 + 0.5 * feed_rate + 0.2 * air_flow - 3 * (pH - 7.5)
             
             anomaly = 0
             if np.random.rand() < self.anomaly_rate:
