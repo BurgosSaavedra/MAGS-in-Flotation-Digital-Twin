@@ -21,8 +21,12 @@ function App() {
   // -----------------------------------------
   // 1) Constants and Config
   // -----------------------------------------
-  const MAX_DATA_POINTS = 90;           
-  const NEW_DATA_THRESHOLD = 0.6;       
+  // Maximum number of data points stored in the buffer for real-time plotting.
+  const MAX_DATA_POINTS = 600; // 1 datapoint per second
+  // Percentage of the buffer size that must be filled with new data before triggering the AI Agent.
+  // The AI Agent analyzes the entire buffer once this threshold is reached.    
+  const NEW_DATA_THRESHOLD = 0.5;
+  // Calculates the exact number of new data points required before activating the AI Agent.
   const thresholdCount = Math.floor(MAX_DATA_POINTS * NEW_DATA_THRESHOLD);
 
   // -----------------------------------------
@@ -213,7 +217,7 @@ function App() {
   // -----------------------------------------
   return (
     <div style={{ padding: '20px', backgroundColor: '#121212', minHeight: '100vh', color: 'white' }}>
-      <h1 style={{ textAlign: 'center', marginBottom: '20px' }}>Flotation Process</h1>
+      <h1 style={{ textAlign: 'center', marginBottom: '20px' }}>Digital Twin for Flotation Process</h1>
 
       <div style={{ display: 'flex', marginBottom: '20px' }}>
         <div style={{ flex: '1', marginRight: '10px' }}>
@@ -298,7 +302,7 @@ function App() {
       </div>
 
       <div style={{ padding: '20px', backgroundColor: '#1e1e1e', borderRadius: '10px' }}>
-        <h2>Agent AI Advisor</h2>
+        <h2>AI Agent Advisor</h2>
         <ReactMarkdown>{geminiResponse || 'Waiting for assessment...'}</ReactMarkdown>
         <p style={{ fontSize: '12px', color: 'gray' }}>
           Last updated: {lastUpdatedTime || 'N/A'}
