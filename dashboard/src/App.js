@@ -1,22 +1,102 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Line } from 'react-chartjs-2';
-import Chart from 'chart.js/auto';
-import 'chartjs-adapter-date-fns';  // Import the date adapter
+import {
+  Chart,
+  TimeScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Tooltip,
+  Legend,
+  CategoryScale
+} from 'chart.js';
+import 'chartjs-adapter-date-fns';
+import axios from 'axios';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+Chart.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Legend, CategoryScale);
 
 function App() {
-  const [dataPoints, setDataPoints] = useState([]);
-  const n = 600; // n is number of elements in buffer
+  // -----------------------------------------
+  // 1) Constants and Config
+  // -----------------------------------------
+  const MAX_DATA_POINTS = 90;           
+  const NEW_DATA_THRESHOLD = 0.6;       
+  const thresholdCount = Math.floor(MAX_DATA_POINTS * NEW_DATA_THRESHOLD);
 
-  // Function to fetch data from the API every second
+  // -----------------------------------------
+  // 2) State and Refs
+  // -----------------------------------------
+  const [dataPoints, setDataPoints] = useState([]);
+  const [geminiResponse, setGeminiResponse] = useState('');
+  const [lastUpdatedTime, setLastUpdatedTime] = useState('');
+  const [newDataCount, setNewDataCount] = useState(0);
+  const [geminiInProgress, setGeminiInProgress] = useState(false);
+
+  // We'll store dataPoints also in a ref so we can reference the latest data
+  // inside the Gemini callback without causing re-renders.
+  const dataPointsRef = useRef([]);
+
+  // We use a ref to ensure we only set the interval ONCE (avoid double in Strict Mode).
+  const intervalRef = useRef(null);
+
+  // Load your Gemini API key from .env
+  const geminiApiKey = process.env.REACT_APP_GEMINI_API_KEY;
+  const genAI = new GoogleGenerativeAI(geminiApiKey);
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+  // -----------------------------------------
+  // 3) Set up polling interval (once)
+  // -----------------------------------------
+  useEffect(() => {
+    if (!intervalRef.current) {
+      console.log("Setting interval to fetch local data every 1s.");
+      intervalRef.current = setInterval(fetchData, 1000);
+    };}, []);
+
+  // -----------------------------------------
+  // 4) Data fetch logic
+  // -----------------------------------------
   const fetchData = async () => {
     try {
-      const response = await fetch('http://localhost:8000/data');
-      const data = await response.json();
+      const response = await axios.get('http://localhost:8000/data');
+      const data = response.data;
+
       if (data && data.length > 0) {
+        // We only take the first element in this example
+        const newDataPoint = data[0];
+
+        // 1) Append to main data buffer (in State and Ref)
         setDataPoints(prevData => {
-          const newData = [...prevData, data[0]];
-          // Keep only the last n data points
-          return newData.length > n ? newData.slice(newData.length - n) : newData;
+          const newDataArray = [...prevData, newDataPoint];
+
+          if (newDataArray.length > MAX_DATA_POINTS) {
+            // Keep array at max length
+            newDataArray.splice(0, newDataArray.length - MAX_DATA_POINTS);
+          }
+          
+          // 🔹 Create a clean array without anomalies
+          const cleanDataArray = newDataArray.map(({ Anomaly, ...rest }) => rest);
+          
+          // Assign only the clean data (without Anomaly) to dataPointsRef
+          dataPointsRef.current = cleanDataArray;
+
+          return newDataArray;
+        });
+
+        // 2) Check if threshold is reached. If so, call Gemini (if not already calling).
+        setNewDataCount(prevCount => {
+          const updatedCount = prevCount + 1;
+          if (updatedCount >= thresholdCount && !geminiInProgress) {
+            console.log(
+              `Reached ${updatedCount} new data points (>= 60% of buffer). Calling Gemini...`
+            );
+            setGeminiInProgress(true); // guard on
+            fetchGeminiResponse()
+              .finally(() => setGeminiInProgress(false)); // guard off
+            return 0; // reset the counter
+          }
+          return updatedCount;
         });
       }
     } catch (error) {
@@ -24,169 +104,194 @@ function App() {
     }
   };
 
-  useEffect(() => {
-    const interval = setInterval(fetchData, 1000);
-    return () => clearInterval(interval);
-  }, []);
+  // -----------------------------------------
+  // 5) Gemini AI call
+  // -----------------------------------------
+  const fetchGeminiResponse = useCallback(async () => {
+    const startTime = new Date();
+    console.log(`Gemini call START at ${startTime.toLocaleTimeString()}`);
+    console.log("Datapoints: ", dataPointsRef.current)
 
-  // Convert raw data points to { x, y } format using Date objects
-  const recoveryData = dataPoints.map(point => ({
-    x: new Date(point.Timestamp),
-    y: point["Recovery Rate (%)"]
-  }));
+    try {
+      // Prepare prompt from REF to get the latest dataPoints
+      const prompt = 
+      `Evaluate the flotation recovery performance using 
+      the provided data: ${JSON.stringify(dataPointsRef.current)}. 
+      Present the results in plain text and provide recommendations for further investigations.`;
 
-  const anomalyData = dataPoints
-    .filter(point => point.Anomaly === 1)
-    .map(point => ({
-      x: new Date(point.Timestamp),
-      y: point["Recovery Rate (%)"]
-    }));
+      // Call the Gemini model
+      const result = await model.generateContent(prompt);
 
-  const feedRateData = dataPoints.map(point => ({
-    x: new Date(point.Timestamp),
-    y: point["Feed Rate (tph)"]
-  }));
+      // Default fallback
+      let responseText = "No response";
 
-  const airFlowData = dataPoints.map(point => ({
-    x: new Date(point.Timestamp),
-    y: point["Air Flow (m3/min)"]
-  }));
-
-  const pHLevelData = dataPoints.map(point => ({
-    x: new Date(point.Timestamp),
-    y: point["pH Level"]
-  }));
-
-  // Chart data configurations (no "labels" property needed when using time scales)
-  const recoveryChartData = {
-    datasets: [
-      {
-        label: 'Recovery Rate (%)',
-        data: recoveryData,
-        borderColor: 'rgba(75,192,192,1)',
-        fill: false,
-        tension: 0.1,
-      },
-      {
-        label: 'Anomaly',
-        data: anomalyData,
-        borderColor: 'red',
-        backgroundColor: 'red',
-        pointRadius: 5,
-        showLine: false,
-        type: 'scatter'
+      // Check `result.parts`
+      if (result?.parts?.[0]?.text !== undefined) {
+        responseText = result.parts[0].text;
+      } 
+      // Check fallback in `response.candidates`
+      else if (result?.response?.candidates?.[0]?.content?.parts?.[0]?.text !== undefined) {
+        responseText = result.response.candidates[0].content.parts[0].text;
       }
-    ]
-  };
 
-  const feedRateChartData = {
-    datasets: [{
-      label: 'Feed Rate (tph)',
-      data: feedRateData,
-      borderColor: 'rgba(255,99,132,1)',
-      fill: false,
-      tension: 0.1,
-    }]
-  };
+      console.log("Response Gemini AI: ", responseText);
 
-  const airFlowChartData = {
-    datasets: [{
-      label: 'Air Flow (m³/min)',
-      data: airFlowData,
-      borderColor: 'rgba(54,162,235,1)',
-      fill: false,
-      tension: 0.1,
-    }]
-  };
+      // Store in state
+      setGeminiResponse(responseText);
+      setLastUpdatedTime(new Date().toLocaleTimeString());
 
-  const pHLevelChartData = {
-    datasets: [{
-      label: 'pH Level',
-      data: pHLevelData,
-      borderColor: 'rgba(255,206,86,1)',
-      fill: false,
-      tension: 0.1,
-    }]
-  };
+    } catch (error) {
+      console.error("Error fetching Gemini response:", error);
+    }
+  }, [model]);
 
-  // Chart options without the internal title (general dashboard title is shown separately)
+  // -----------------------------------------
+  // 6) Chart.js config + data
+  // -----------------------------------------
   const chartOptions = {
+    animation: false,
     responsive: true,
     plugins: {
-      legend: {
-        labels: {
-          color: 'white'
-        }
-      }
+      legend: { labels: { color: 'white' } },
     },
     scales: {
       x: {
         type: 'time',
         time: {
           unit: 'minute',
-          displayFormats: {
-            minute: 'HH:mm'
-          },
-          tooltipFormat: 'HH:mm:ss'
+          displayFormats: { minute: 'HH:mm' },
+          tooltipFormat: 'HH:mm:ss',
         },
-        title: {
-          display: true,
-          text: 'Time',
-          color: 'white'
-        },
-        ticks: {
-          color: 'white'
-        },
-        grid: {
-          color: 'rgba(255,255,255,0.1)'
-        }
+        title: { display: true, text: 'Time', color: 'white' },
+        ticks: { color: 'white' },
+        grid: { color: 'rgba(255,255,255,0.1)' },
       },
       y: {
-        title: {
-          display: true,
-          text: 'Value',
-          color: 'white'
-        },
-        ticks: {
-          color: 'white'
-        },
-        grid: {
-          color: 'rgba(255,255,255,0.1)'
-        }
-      }
-    }
+        title: { display: true, text: 'Value', color: 'white' },
+        ticks: { color: 'white' },
+        grid: { color: 'rgba(255,255,255,0.1)' },
+      },
+    },
   };
 
+  // Helper to convert data for chart
+  const processData = (key) => {
+    return dataPoints
+      .filter((point) => point.Timestamp)
+      .map((point) => ({
+        x: new Date(point.Timestamp),
+        y: point[key]
+      }));
+  };
+
+  // Prepare datasets
+  const recoveryData = processData("Recovery Rate (%)");
+  const anomalyData = dataPoints
+    .filter((point) => point.Anomaly === 1)
+    .map((point) => ({
+      x: new Date(point.Timestamp),
+      y: point["Recovery Rate (%)"],
+    }));
+
+  const feedRateData = processData("Feed Rate (tph)");
+  const airFlowData  = processData("Air Flow (m3/min)");
+  const pHLevelData  = processData("pH Level");
+
+  // -----------------------------------------
+  // 7) Render
+  // -----------------------------------------
   return (
     <div style={{ padding: '20px', backgroundColor: '#121212', minHeight: '100vh', color: 'white' }}>
-      {/* General dashboard title */}
       <h1 style={{ textAlign: 'center', marginBottom: '20px' }}>Flotation Process</h1>
 
-      {/* Row 1: Plant GIF and Recovery Rate Chart */}
       <div style={{ display: 'flex', marginBottom: '20px' }}>
         <div style={{ flex: '1', marginRight: '10px' }}>
-          <img 
-            src="/plant.gif" 
-            alt="Processing Plant" 
-            style={{ width: '100%', height: 'auto' }} 
-          />
+          <img src="/plant.gif" alt="Processing Plant" style={{ width: '100%', height: 'auto' }} />
         </div>
         <div style={{ flex: '2' }}>
-          <Line key="recovery" data={recoveryChartData} options={chartOptions} />
+          <Line
+            key={dataPoints.length}
+            data={{
+              datasets: [
+                {
+                  label: 'Recovery Rate (%)',
+                  data: recoveryData,
+                  borderColor: 'rgba(75,192,192,1)',
+                  fill: false,
+                },
+                {
+                  label: 'Anomaly',
+                  data: anomalyData,
+                  borderColor: 'red',
+                  backgroundColor: 'red',
+                  pointRadius: 5,
+                  showLine: false,
+                  type: 'scatter',
+                },
+              ],
+            }}
+            options={chartOptions}
+          />
         </div>
       </div>
 
-      {/* Row 2: Separate charts for Feed Rate, Air Flow, and pH Level */}
       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
         <div style={{ flex: '1', marginRight: '10px' }}>
-          <Line key="feedRate" data={feedRateChartData} options={chartOptions} />
+          <Line
+            key="feedRate"
+            data={{
+              datasets: [
+                {
+                  label: 'Feed Rate (tph)',
+                  data: feedRateData,
+                  borderColor: 'rgba(255,99,132,1)',
+                  fill: false,
+                },
+              ],
+            }}
+            options={chartOptions}
+          />
         </div>
         <div style={{ flex: '1', marginRight: '10px' }}>
-          <Line key="airFlow" data={airFlowChartData} options={chartOptions} />
+          <Line
+            key="airFlow"
+            data={{
+              datasets: [
+                {
+                  label: 'Air Flow (m³/min)',
+                  data: airFlowData,
+                  borderColor: 'rgba(54,162,235,1)',
+                  fill: false,
+                },
+              ],
+            }}
+            options={chartOptions}
+          />
         </div>
         <div style={{ flex: '1' }}>
-          <Line key="pHLevel" data={pHLevelChartData} options={chartOptions} />
+          <Line
+            key="pHLevel"
+            data={{
+              datasets: [
+                {
+                  label: 'pH Level',
+                  data: pHLevelData,
+                  borderColor: 'rgba(255,206,86,1)',
+                  fill: false,
+                },
+              ],
+            }}
+            options={chartOptions}
+          />
         </div>
+      </div>
+
+      <div style={{ padding: '20px', backgroundColor: '#1e1e1e', borderRadius: '10px' }}>
+        <h2>Agent AI Advisor</h2>
+        <p>{geminiResponse || 'Waiting for assessment...'}</p>
+        <p style={{ fontSize: '12px', color: 'gray' }}>
+          Last updated: {lastUpdatedTime || 'N/A'}
+        </p>
       </div>
     </div>
   );
